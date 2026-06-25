@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vigilo - Mot de passe</title>
+  <style>
+    :root { color-scheme: light; font-family: "Segoe UI", system-ui, sans-serif; background: #fafafa; color: #171717; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 32px; }
+    main { box-sizing: border-box; width: min(390px, 100%); background: #fff; border: 1px solid #dedede; border-radius: 8px; padding: 24px; }
+    h1 { margin: 0 0 8px; font-size: 20px; font-weight: 650; }
+    p { margin: 0 0 20px; color: #666; font-size: 14px; line-height: 1.5; }
+    label { display: block; margin: 14px 0 6px; color: #444; font-size: 13px; }
+    input, button { box-sizing: border-box; width: 100%; height: 42px; border-radius: 6px; font: inherit; }
+    input { border: 1px solid #d0d0d0; padding: 0 12px; }
+    button { margin-top: 18px; border: 0; background: #171717; color: #fff; font-weight: 650; cursor: pointer; }
+    button:disabled { cursor: default; opacity: .55; }
+    .message { margin: 0 0 16px; padding: 10px 12px; border-radius: 6px; font-size: 13px; }
+    .message[data-kind="error"] { background: #fef2f2; color: #991b1b; }
+    .message[data-kind="success"] { background: #ecfdf5; color: #065f46; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Nouveau mot de passe</h1>
+    <p>Choisissez votre mot de passe Vigilo. Vous pourrez ensuite ouvrir l'application et vous connecter.</p>
+    <div id="message" class="message hidden"></div>
+    <form id="password-form" class="hidden">
+      <label for="password">Mot de passe</label>
+      <input id="password" type="password" autocomplete="new-password" minlength="6" required />
+      <label for="confirm-password">Confirmer</label>
+      <input id="confirm-password" type="password" autocomplete="new-password" minlength="6" required />
+      <button id="submit-button" type="submit">Enregistrer</button>
+    </form>
+  </main>
+  <script>window.VIGILO_AUTH_CONFIG = {"supabaseUrl":"https://bmltcjfymcfygrzxlkww.supabase.co","supabaseAnonKey":"sb_publishable_fivC_a-ka_ow6t-j4vNVEQ_dVcF08B_"};</script>
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+    const message = document.getElementById("message");
+    const form = document.getElementById("password-form");
+    const submitButton = document.getElementById("submit-button");
+    function setMessage(text, kind = "error") { message.textContent = text; message.dataset.kind = kind; message.classList.remove("hidden"); }
+    function authParams() { const url = new URL(window.location.href); const params = new URLSearchParams(url.search); const rawHash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash; if (rawHash) { const hashQuery = rawHash.startsWith("/") ? (rawHash.split("?")[1] || "") : rawHash; for (const [key, value] of new URLSearchParams(hashQuery)) if (!params.has(key)) params.set(key, value); } return params; }
+    async function establishSession(supabase) { const params = authParams(); const urlError = params.get("error_description") || params.get("error"); if (urlError) throw new Error(decodeURIComponent(urlError)); const accessToken = params.get("access_token"); const refreshToken = params.get("refresh_token"); if (accessToken && refreshToken) { const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }); if (error) throw error; return; } const tokenHash = params.get("token_hash"); if (tokenHash) { const type = params.get("type") || "recovery"; const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type }); if (error) throw error; return; } throw new Error("Lien invalide ou expiré."); }
+    let supabase = null;
+    try { setMessage("Validation du lien...", "success"); const env = window.VIGILO_AUTH_CONFIG; supabase = createClient(env.supabaseUrl, env.supabaseAnonKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }); await establishSession(supabase); message.classList.add("hidden"); form.classList.remove("hidden"); } catch (error) { setMessage(error instanceof Error ? error.message : "Lien invalide ou expiré."); }
+    form.addEventListener("submit", async (event) => { event.preventDefault(); if (!supabase) return; const password = document.getElementById("password").value; const confirmPassword = document.getElementById("confirm-password").value; if (password.length < 6) { setMessage("Le mot de passe doit contenir au moins 6 caractères."); return; } if (password !== confirmPassword) { setMessage("Les mots de passe ne correspondent pas."); return; } submitButton.disabled = true; const { error } = await supabase.auth.updateUser({ password }); if (error) { submitButton.disabled = false; setMessage(error.message); return; } form.classList.add("hidden"); setMessage("Mot de passe enregistré. Vous pouvez ouvrir Vigilo et vous connecter.", "success"); });
+  </script>
+</body>
+</html>
